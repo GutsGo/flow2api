@@ -245,7 +245,7 @@ class BrowserCaptchaService:
                 headless=self.headless,
                 user_data_dir=self.user_data_dir,
                 browser_executable_path=browser_executable_path,
-                sandbox=False,  # nodriver 需要此参数来禁用 sandbox
+                no_sandbox=True,  # nodriver 建议在 root 下运行时使用此参数
                 browser_args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
