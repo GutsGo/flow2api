@@ -245,12 +245,14 @@ class BrowserCaptchaService:
                 headless=self.headless,
                 user_data_dir=self.user_data_dir,
                 browser_executable_path=browser_executable_path,
-                sandbox=False,  # nodriver 需要此参数来禁用 sandbox
+                sandbox=False,  # nodriver 实际参数是 sandbox=False，错误提示里的 no_sandbox=True 是误导
                 browser_args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-setuid-sandbox',
                     '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--remote-debugging-address=127.0.0.1',
                     '--window-size=1280,720',
                     '--profile-directory=Default',  # 跳过 Profile 选择器页面
                 ]
