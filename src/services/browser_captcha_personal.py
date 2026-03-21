@@ -241,26 +241,73 @@ class BrowserCaptchaService:
                 )
 
             # 启动 nodriver 浏览器
-            self.browser = await uc.start(
-                headless=self.headless,
-                user_data_dir=self.user_data_dir,
-                browser_executable_path=browser_executable_path,
-                sandbox=False,  # nodriver 需要此参数来禁用 sandbox
-                browser_args=[
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--window-size=1280,720',
-                    '--profile-directory=Default',  # 跳过 Profile 选择器页面
-                ]
-            )
+            import socket
+            import urllib.request
+            
+            host = "127.0.0.1"
+            # 用 socket 找一个空闲端口
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+            s.close()
+            
+            # 手动拉起 Chromium 进程，以解决 nodriver 内部超时只有 2.5 秒、容易在 ARM 容器中“Failed to connect”的问题
+            args = [
+                browser_executable_path or "chromium",
+                f"--remote-debugging-port={port}",
+                f"--remote-debugging-address={host}",
+                f"--user-data-dir={self.user_data_dir}",
+                "--remote-allow-origins=*",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--window-size=1280,720",
+                "--profile-directory=Default",
+                "--disable-session-crashed-bubble",
+                "--no-first-run",
+                "--password-store=basic",
+            ]
+            
+            debug_logger.log_info(f"[BrowserCaptcha] 执行命令: {' '.join(args)}")
+            import subprocess
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            # 轮询等待浏览器启动调试端口 (最多等待 10 秒)
+            attached = False
+            for _ in range(20):
+                try:
+                    urllib.request.urlopen(f"http://{host}:{port}/json/version", timeout=1)
+                    attached = True
+                    break
+                except:
+                    if proc.poll() is not None:
+                        # 进程已经退出了，说明启动直接崩溃
+                        stdout, stderr = proc.communicate(timeout=1)
+                        raise RuntimeError(f"浏览器进程启动即崩溃!\nSTDOUT: {stdout}\nSTDERR: {stderr}")
+                    await asyncio.sleep(0.5)
+            
+            if not attached:
+                proc.kill()
+                stdout, stderr = proc.communicate(timeout=1)
+                raise RuntimeError(f"等待浏览器端口 {port} 超时!\nSTDOUT: {stdout}\nSTDERR: {stderr}")
 
+            # 把已经启动的浏览器 attach 到 nodriver
+            self.browser = await uc.start(
+                host=host,
+                port=port,
+            )
+            
+            # 给 nodriver 绑定进程生命周期，让 stop 时能自动清理
+            self.browser._process = proc
+            self.browser._process_pid = proc.pid
+            
             self._initialized = True
-            debug_logger.log_info(f"[BrowserCaptcha] ✅ nodriver 浏览器已启动 (Profile: {self.user_data_dir})")
+            debug_logger.log_info(f"[BrowserCaptcha] ✅ nodriver 浏览器已启动并连接成功 (Port: {port})")
 
         except Exception as e:
-            debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动失败: {str(e)}")
+            debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动或连接失败: {str(e)}")
             raise
 
     # ========== 常驻模式 API ==========
