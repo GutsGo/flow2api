@@ -22,10 +22,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variant: standard
-            dockerfile: Dockerfile
-            image_suffix: ""
-            cache_scope: standard
+          # - variant: standard
+          #   dockerfile: Dockerfile
+          #   image_suffix: ""
+          #   cache_scope: standard
           - variant: headed
             dockerfile: Dockerfile.headed
             image_suffix: -headed
